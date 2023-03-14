@@ -1,0 +1,39 @@
+{
+  "name": "@timly/yun-cli",
+  "version": "0.0.1",
+  "description": "Get to know Node CLI `npx @timly/yun-cli`.",
+  "type": "module",
+  "main": "bin/index.js",
+  "bin": {
+    "@timly/yun-cli": "bin/main.js"
+  },
+  "scripts": {
+    "dev": "node bin/main.js",
+    "format": "prettier --write ./**/*.{js,json}"
+  },
+  "dependencies": {
+    "chalk": "^5.2.0",
+    "commander": "^10.0.0"
+  },
+  "devDependencies": {
+    "prettier": "^2.8.4"
+  },
+  "files": [
+    ".prettierrc"
+  ],
+  "keywords": [
+    "timly",
+    "yun-cli",
+    "yun",
+    "cli",
+    "@timly/yun-cli",
+    "NEXT CLI"
+  ],
+  "repository": "lyios8859-1/timly-yun-cli",
+  "author": {
+    "name": "TIMLY",
+    "email": "liu67839@gmail.com",
+    "url": "https://lyios8859-1.github.io/timly-yun-cli/"
+  },
+  "license": "MIT"
+}
