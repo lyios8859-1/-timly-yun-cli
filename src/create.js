@@ -22,6 +22,11 @@ export class Creator {
     // 自定义特性提示选项（复选框）
     this.featurePrompt = this.resolveFeaturePrompts();
 
+    // 其他提示选项
+    this.injectedPrompts = [];
+    // 回调
+    this.promptCompleteCbs = [];
+
     const promptAPI = new PromptModuleAPI(this);
     const promptModules = getPromptModules();
     promptModules.then(pm => {
@@ -92,6 +97,7 @@ export class Creator {
       this.presetPrompt,
       this.featurePrompt,
       ...this.outroPrompts,
+      ...this.injectedPrompts,
     ];
     return prompts;
   }
