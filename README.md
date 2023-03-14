@@ -1104,3 +1104,274 @@ renderFile (name, data) {
   return ejs.render(template, data)
 }
 ```
+
+### Generator.js
+
+> Generator 类用于生成项目文件，配置文件。主要是 generate 方法的实现，外部通过调用 generate 方法来生成文件。
+
+```js
+// src/Generator.js
+
+const PackageManager = require('./PackageManager')
+const { writeFileTree } = require('./utils.js')
+
+class Generator {
+  constructor (context, {
+    pkg = {},
+    plugins = [],
+    files = {}
+  } = {}) {
+    // 目标目录即准备新建的项目目录
+    this.context = context
+    // 插件信息：[{id: '@vue/cli-service', apply: [Function], options: {...}}, ...]。
+    this.plugins = plugins
+    this.originalPkg = pkg
+    // 由 Creator 实例传进来的 pkg，为 项目目录 package.json 数据对象。
+    this.pkg = Object.assign({}, pkg)
+    this.pm = new PackageManager({ context }) // 实例化打包对象
+    this.rootOptions = {}
+    this.defaultConfigTransforms = defaultConfigTransforms // 记录 babel, vue 等配置文件默认名字，并提供了提取文件内容的能力。
+    // 文件信息，用于生成项目文件配置文件。
+    this.files = files
+    this.fileMiddlewares = []
+    this.exitLogs = []
+
+    const cliService = plugins.find(p => p.id === '@vue/cli-service') // @vue/cli-service 插件
+    const rootOptions = cliService.options
+
+    this.rootOptions = rootOptions
+  }
+}
+
+module.exports = Generator;
+```
+
+defaultConfigTransforms 是配置文件信息，定义了各个配置文件的默认名字。ConfigTransform 用于获取配置文件名及内容
+
+```js
+// src/Generator.js
+const ConfigTransform = require('./ConfigTransform')
+
+const defaultConfigTransforms = {
+  vue: new ConfigTransform({
+    js: ['vue.config.js']
+  }),
+  babel: new ConfigTransform({
+    js: ['babel.config.js']
+  }),
+  postcss: new ConfigTransform({
+    js: ['postcss.config.js'],
+  }),
+  eslintConfig: new ConfigTransform({
+    js: ['.eslintrc.js']
+  }),
+  jest: new ConfigTransform({
+    js: ['jest.config.js']
+  }),
+  'lint-staged': new ConfigTransform({
+    js: ['lint-staged.config.js'],
+  })
+}
+```
+
+#### generate 方法
+
+> 提取信息，写入磁盘。
+
+```js
+/*
+  initPlugins 准备工作，提取配置信息到 pkg (即 Creator 实例的 pkg)，项目文件生成准备工作。
+  extractConfigFiles 将 pkg (即 package.json) 中的一些配置提取到专用文件中。
+  resolveFiles 提取文件内容
+  更新 package.json 数据，生成项目文件，配置文件
+*/
+async generate ({
+  extractConfigFiles = false,
+  checkExisting = false,
+  sortPackageJson = true
+} = {}) {
+  // 准备工作
+  await this.initPlugins()
+  // 将 package.json 中的一些配置提取到专用文件中。
+  this.extractConfigFiles(extractConfigFiles, checkExisting)
+  // 提取文件内容
+  await this.resolveFiles()
+  // pkg 字段排序
+  if (sortPackageJson) {
+    this.sortPkg()
+  }
+  // 更新 package.json 数据
+  this.files['package.json'] = JSON.stringify(this.pkg, null, 2) + '\n'
+  // 生成项目文件，配置文件
+  await writeFileTree(this.context, this.files)
+}
+```
+
+#### initPlugins 方法
+
+> 运行前面导入的模块 @vue/cli-service/generator，@vue/cli-plugin-babel/generator，@vue/cli-plugin-eslint/generator，提取相关信息到 pkg，files。
+> 实例化 GeneratorAPI。GeneratorAPI 提供了 extendPackage 和 render 方法。
+> 运行apply(api, options, rootOptions, {}) 等于运行 @vue/cli-service/generator，@vue/cli-plugin-babel/generator，@vue/cli-plugin-eslint/generator等模块，这些模块调用了GeneratorAPI 的 render，extendPackage 方法。
+
+```js
+const GeneratorAPI = require('./GeneratorAPI')
+
+async initPlugins () {
+  const { rootOptions } = this
+
+  for (const plugin of this.plugins) {
+    const { id, apply, options } = plugin
+    const api = new GeneratorAPI(id, this, options, rootOptions)
+    await apply(api, options, rootOptions, {})
+  }
+}
+```
+
+#### extractConfigFiles 方法
+
+```js
+// 提取 pkg 的 vue、babel 配置信息到 files 对象，key 为 vue.config.js, babel.config.js。
+extractConfigFiles () {
+  const ensureEOL = str => {
+    if (str.charAt(str.length - 1) !== '\n') {
+      return str + '\n'
+    }
+    return str
+  }
+
+  const extract = key => {
+    const value = this.pkg[key]
+    const configTransform = this.defaultConfigTransforms[key]
+    // 用于处理配置文件名称，文件内容，并记录到 this.files
+    const res = configTransform.transform(
+      value,
+      false,
+      this.files,
+      this.context
+    )
+    const { content, filename } = res
+    this.files[filename] = ensureEOL(content)
+    // this.files['babel.config.js'] = 文件内容
+    // this.files['vue.config.js'] = 文件内容
+  }
+
+  // 提取 vue, babel 配置文件名称及其内容
+  extract('vue')
+  extract('babel')
+}
+```
+
+#### resolveFiles 方法
+
+```js
+// 提取 vue 的项目文件名及内容。
+async resolveFiles () {
+  for (const middleware of this.fileMiddlewares) {
+    await middleware(this.files)
+  }
+}
+```
+
+## 实现 PackageManager
+
+> PackageManager 是包管理工具类，提供了初始化包管理工具，NPM 不同版本的兼容处理，安装，运行命令等功能。
+
+***src/PackageManager.js***
+
+```js
+const { semver, execa } = require('@vue/cli-shared-utils')
+const { executeCommand } = require('./util/executeCommand')
+
+const PACKAGE_MANAGER_CONFIG = {
+  npm: {
+    install: ['install', '--loglevel', 'error']
+  }
+}
+
+class PackageManager {
+  constructor ({ context } = {}) {
+    this.context = context || process.cwd()
+    this.bin = 'npm'
+    this._registries = {}
+
+    // npm 版本处理
+    const MIN_SUPPORTED_NPM_VERSION = '6.9.0'
+    const npmVersion = execa.sync('npm', ['--version']).stdout
+
+    if (semver.lt(npmVersion, MIN_SUPPORTED_NPM_VERSION)) {
+      throw new Error('NPM 版本太低啦，请升级')
+    }
+
+    if (semver.gte(npmVersion, '7.0.0')) {
+      this.needsPeerDepsFix = true
+    }
+  }
+
+  // 安装
+  async install () {
+    const args = []
+
+    // npm 版本大于7
+    if (this.needsPeerDepsFix) {
+      args.push('--legacy-peer-deps')
+    }
+
+    return await this.runCommand('install', args)
+  }
+
+  async runCommand (command, args) {
+    await executeCommand(
+      this.bin,
+      [
+        ...PACKAGE_MANAGER_CONFIG[this.bin][command],
+        ...(args || [])
+      ],
+      this.context
+    )
+  }
+}
+
+module.exports = PackageManager;`
+```
+
+### executeCommand 方法
+
+> 调用 execa 命令，调用子进程运行命令。
+>
+***src/tools/executeCommand.js***
+
+```js
+const { execa } = require('@vue/cli-shared-utils')
+
+exports.executeCommand = function executeCommand (command, args, cwd) {
+  return new Promise((resolve, reject) => {
+    const child = execa(command, args, {
+      cwd,
+      stdio: ['inherit', 'inherit', 'inherit']
+    })
+
+    child.on('close', code => {
+      if (code !== 0) {
+        reject(new Error(`command failed: ${command} ${args.join(' ')}`))
+        return
+      }
+      resolve()
+    })
+  })
+}
+```
+
+PS: install 方法最后调用 execa 的样子
+
+```js
+execa(
+  'npm',
+  ['install', '--loglevel', 'error', '--legacy-peer-deps'],
+  {
+    cwd,
+    stdio: ['inherit', 'inherit', 'inherit']
+  }
+)
+```
+
+execa 在项目目录下，调用子进程安装依赖，执行的命令为：`pnpm install --loglevel error --legacy-peer-deps`
