@@ -96,6 +96,7 @@ class GeneratorAPI {
     return ejs.render(template, data);
   }
 
+  // 将相关配置提取到 Generator 实例的 pkg 变量。
   extendPackage(fields, options = {}) {
     const pkg = this.generator.pkg;
     const toMerge = fields;
@@ -114,6 +115,7 @@ class GeneratorAPI {
     }
   }
 
+  // 判断项目是否使用了该插件。
   hasPlugin(id) {
     const pluginExists = [...this.generator.plugins.map(p => p.id)].some(pid =>
       matchesPluginId(id, pid)

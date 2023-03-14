@@ -1,4 +1,4 @@
-const execa = require("execa");
+const { execa } = require("@vue/cli-shared-utils");
 
 module.exports = function executeCommand(command, args, cwd) {
   return new Promise((resolve, reject) => {
