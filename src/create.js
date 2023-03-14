@@ -1,11 +1,22 @@
-import chalk from "chalk";
-import inquirer from "inquirer";
+const {
+  chalk,
+  log,
+  hasGit,
+  hasProjectGit,
+  execa,
+  loadModule,
+} = require("@vue/cli-shared-utils");
+const inquirer = require("inquirer");
 
-import { defaults, vuePresets } from "./config/preset.js";
-import { getPromptModules } from "./config/prompt.js";
-import { PromptModuleAPI } from "./PromptModuleAPI.js";
+const { sortObject, writeFileTree, generateReadme } = require("./utils.js");
 
-export class Creator {
+const { defaults, vuePresets } = require("./config/preset.js");
+const getPromptModules = require("./config/prompt.js");
+const Generator = require("./Generator.js");
+const PackageManager = require("./PackageManager.js");
+const PromptModuleAPI = require("./PromptModuleAPI.js");
+
+class Creator {
   constructor(name, context) {
     // 项目名称
     this.name = name;
@@ -30,14 +41,11 @@ export class Creator {
 
     const promptAPI = new PromptModuleAPI(this);
     const promptModules = getPromptModules();
-    promptModules.then(pm => {
-      pm.forEach(m => m.default(promptAPI));
+    promptModules.forEach(m => m(promptAPI));
+    // 保存相关提示选项
+    this.outroPrompts = this.resolveOutroPrompts();
 
-      // 保存相关提示选项
-      this.outroPrompts = this.resolveOutroPrompts();
-
-      // this.test();
-    });
+    // this.test();
   }
 
   // async test() {
@@ -60,7 +68,7 @@ export class Creator {
   //     });
   // }
 
-  async create() {
+  async create(cliOptions = {}) {
     // // 命令运行时的目录
     // const cwd = process.cwd();
     // // 目录拼接项目名
@@ -68,6 +76,10 @@ export class Creator {
     // console.log(`创建项目的目录路径: ${targetDir}`);
 
     const preset = await this.promptAndResolvePreset();
+    await this.initPackageManagerEnv(preset);
+    const generator = await this.generate(preset);
+    await this.generateReadme(generator); // +
+    this.finished(); // +
 
     // 测试（仅为测试代码，用完需删除）
     console.log("preset 值：");
@@ -104,7 +116,7 @@ export class Creator {
       this.presetPrompt,
       this.featurePrompt,
       ...this.outroPrompts,
-      ...this.injectedPrompts,
+      // ...this.injectedPrompts,
     ];
     return prompts;
   }
@@ -170,6 +182,7 @@ export class Creator {
 
       // answers 得到的值为 { preset: 'Default (Vue 2)' }
 
+      console.log(answers.preset);
       if (answers.preset && answers.preset === "Default (Vue 2)") {
         if (answers.preset in vuePresets) {
           preset = vuePresets[answers.preset];
@@ -189,10 +202,132 @@ export class Creator {
 
       return preset;
     } catch (err) {
-      console.log(chalk.red(err));
+      log(chalk.red(err));
       process.exit(1);
     }
   }
+
+  async initPackageManagerEnv(preset) {
+    const { name, context } = this;
+    this.pm = new PackageManager({ context });
+
+    // 打印提示
+    log(`✨ 创建项目：${chalk.yellow(context)}`);
+
+    // 用于生成 package.json 文件
+    const pkg = {
+      name,
+      version: "0.0.1",
+      private: true,
+      devDependencies: {},
+    };
+
+    // 给 npm 包指定版本，简单做，使用最新的版本
+    const deps = Object.keys(preset.plugins);
+    deps.forEach(dep => {
+      let { version } = preset.plugins[dep];
+      if (!version) {
+        version = "latest";
+      }
+      pkg.devDependencies[dep] = version;
+    });
+
+    this.pkg = pkg;
+
+    // 写 package.json 文件
+    await writeFileTree(context, {
+      "package.json": JSON.stringify(pkg, null, 2),
+    });
+
+    // 初始化 git 仓库，以至于 vue-cli-service 可以设置 git hooks
+    const shouldInitGit = this.shouldInitGit();
+    if (shouldInitGit) {
+      log(`🗃 初始化 Git 仓库...`);
+      await this.run("git init");
+    }
+
+    // 安装插件 plugins
+    log(`⚙ 正在安装 CLI plugins. 请稍候...`);
+
+    await this.pm.install();
+  }
+
+  run(command, args) {
+    if (!args) {
+      [command, ...args] = command.split(/\s+/);
+    }
+    return execa(command, args, { cwd: this.context });
+  }
+
+  // 判断是否可以初始化 git 仓库：系统安装了 git 且目录下未初始化过，则初始化
+  shouldInitGit() {
+    if (!hasGit()) {
+      // 系统未安装 git
+      return false;
+    }
+
+    // 项目未初始化 Git
+    return !hasProjectGit(this.context);
+  }
+
+  async generate(preset) {
+    // 打印
+    log(`🚀 准备相关文件...`);
+    const { pkg, context } = this;
+
+    const plugins = await this.resolvePlugins(preset.plugins, pkg);
+
+    const generator = new Generator(context, {
+      pkg,
+      plugins,
+    });
+
+    // 赋值模板 start
+    await generator.generate({
+      extractConfigFiles: preset.useConfigFiles, // false
+    });
+    log(`🚀 相关文件已写入磁盘！`);
+
+    await this.pm.install();
+
+    return generator;
+  }
+
+  async resolvePlugins(rawPlugins) {
+    // 插件排序，@vue/cli-service 排第1个
+    rawPlugins = sortObject(rawPlugins, ["@vue/cli-service"], true);
+    const plugins = [];
+
+    for (const id of Object.keys(rawPlugins)) {
+      // require('@vue/cli-service/generator')
+      // require('@vue/cli-plugin-babel/generator')
+      // require('@vue/cli-plugin-eslint/generator')
+      const apply = loadModule(`${id}/generator`, this.context) || (() => {});
+      let options = rawPlugins[id] || {};
+      plugins.push({ id, apply, options });
+    }
+
+    return plugins;
+  }
+
+  async generateReadme(generator) {
+    log();
+    log("📄 正在生成 README.md...");
+    const { context } = this;
+    await writeFileTree(context, {
+      "README.md": generateReadme(generator.pkg),
+    });
+  }
+
+  finished() {
+    const { name } = this;
+    log(`🎉 成功创建项目 ${chalk.yellow(name)}.`);
+    log(
+      `👉 用以下命令启动项目 :\n\n` +
+        chalk.cyan(`cd ${name}\n`) +
+        chalk.cyan(`npm run serve`)
+    );
+  }
 }
 
-export default Creator;
+module.exports = Creator;

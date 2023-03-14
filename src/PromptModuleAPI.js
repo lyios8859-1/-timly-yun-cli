@@ -1,4 +1,4 @@
-export class PromptModuleAPI {
+class PromptModuleAPI {
   // 入参 creator 为 Creator 的实例。
   constructor(creator) {
     this.creator = creator;
@@ -27,3 +27,5 @@ export class PromptModuleAPI {
     this.creator.promptCompleteCbs.push(cb);
   }
 }
+
+module.exports = PromptModuleAPI;

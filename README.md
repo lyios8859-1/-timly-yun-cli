@@ -136,3 +136,19 @@ npm run dev -- create xxx
 ```js
 
 ```
+
+### 初始化安装环境，安装内置插件
+
+需要 `fs-extra`
+
+```sh
+pnpm i fs-extra
+```
+
+***src/create.js***
+
+```js
+
+```
+
+### 生成项目文件，生成配置文件

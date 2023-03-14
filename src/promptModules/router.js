@@ -1,6 +1,6 @@
-import chalk from "chalk";
+const { chalk } = require("@vue/cli-shared-utils");
 
-export default function (pmInstance) {
+module.exports = function (pmInstance) {
   pmInstance.injectFeature({
     name: "Router",
     value: "router",
@@ -26,4 +26,4 @@ export default function (pmInstance) {
       };
     }
   });
-}
+};

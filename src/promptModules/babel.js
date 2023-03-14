@@ -1,4 +1,4 @@
-export default function (pmInstance) {
+module.exports = function (pmInstance) {
   pmInstance.injectFeature({
     name: "Babel",
     value: "babel",
@@ -8,4 +8,4 @@ export default function (pmInstance) {
     link: "https://babeljs.io/",
     checked: true,
   });
-}
+};

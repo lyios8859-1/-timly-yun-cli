@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 
-import chalk from "chalk";
-import { Command } from "commander";
+const { chalk, log } = require("@vue/cli-shared-utils");
+const { Command } = require("commander");
 
-import Creator from "../src/create.js";
-import { log } from "../src/utils.js";
-
+const create = require("../src/index.js");
 const program = new Command();
 
 program
@@ -20,8 +18,7 @@ program
   .argument("<app-name>", "项目名称") // [xxx] xxx可选，<xxx> xxx必须
   .action((name, options) => {
     log(chalk.bold.blue(`Next CLI v0.0.1`));
-    const c = new Creator(name);
-    c.create();
+    create(name, options);
   });
 
 program.on("--help", () => {
