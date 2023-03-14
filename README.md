@@ -116,3 +116,15 @@ PS：我这里就不使用这种方式了，直接运行脚本设置参数。
 ```sh
 npm run dev -- create xxx
 ```
+
+## 实现 Creator
+
+> 需要使用到库 `inquirer`。`pnpm i -D inquirer`
+
+### 初始化提示对话框
+
+***src/create.js***
+
+```js
+
+```

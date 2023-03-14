@@ -3,7 +3,7 @@
 import chalk from "chalk";
 import { Command } from "commander";
 
-import { create } from "../src/create.js";
+import Creator from "../src/create.js";
 import { log } from "../src/utils.js";
 
 const program = new Command();
@@ -18,9 +18,10 @@ program
   .command("create")
   .description("创建项目")
   .argument("<app-name>", "项目名称") // [xxx] xxx可选，<xxx> xxx必须
-  .action((str, options) => {
+  .action((name, options) => {
     log(chalk.bold.blue(`Next CLI v0.0.1`));
-    create(str, options);
+    const c = new Creator(name);
+    // c.create(name);
   });
 
 program.on("--help", () => {
