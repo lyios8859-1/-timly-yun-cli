@@ -1,7 +1,7 @@
+import chalk from "chalk";
 import inquirer from "inquirer";
-import { resolve } from "path";
 
-import { defaults } from "./config/preset.js";
+import { defaults, vuePresets } from "./config/preset.js";
 import { getPromptModules } from "./config/prompt.js";
 import { PromptModuleAPI } from "./PromptModuleAPI.js";
 
@@ -26,6 +26,7 @@ export class Creator {
     this.injectedPrompts = [];
     // 回调
     this.promptCompleteCbs = [];
+    this.outroPrompts = [];
 
     const promptAPI = new PromptModuleAPI(this);
     const promptModules = getPromptModules();
@@ -35,36 +36,42 @@ export class Creator {
       // 保存相关提示选项
       this.outroPrompts = this.resolveOutroPrompts();
 
-      this.test();
+      // this.test();
     });
   }
 
-  async test() {
-    // 测试（仅为测试代码，用完需删除）
-    inquirer
-      .prompt(this.resolveFinalPrompts())
-      .then(res => {
-        console.log("选择的选项：");
-        console.log(res);
-      })
-      .catch(error => {
-        if (error.isTtyError) {
-          console.log(">>>isTtyError>>>");
-        } else {
-          console.log("Something else went wrong");
-        }
-      })
-      .finally(() => {
-        console.log("test........");
-      });
-  }
+  // async test() {
+  //   // 测试（仅为测试代码，用完需删除）
+  //   inquirer
+  //     .prompt(this.resolveFinalPrompts())
+  //     .then(res => {
+  //       console.log("选择的选项：");
+  //       console.log(res);
+  //     })
+  //     .catch(error => {
+  //       if (error.isTtyError) {
+  //         console.log(">>>isTtyError>>>");
+  //       } else {
+  //         console.log("Something else went wrong");
+  //       }
+  //     })
+  //     .finally(() => {
+  //       console.log("test........");
+  //     });
+  // }
 
   async create() {
-    // 命令运行时的目录
-    const cwd = process.cwd();
-    // 目录拼接项目名
-    const targetDir = resolve(cwd, this.name || ".");
-    console.log(`创建项目的目录路径: ${targetDir}`);
+    // // 命令运行时的目录
+    // const cwd = process.cwd();
+    // // 目录拼接项目名
+    // const targetDir = resolve(cwd, this.name || ".");
+    // console.log(`创建项目的目录路径: ${targetDir}`);
+
+    const preset = await this.promptAndResolvePreset();
+
+    // 测试（仅为测试代码，用完需删除）
+    console.log("preset 值：");
+    console.log(preset);
   }
 
   // 获得预设的选项
@@ -152,6 +159,39 @@ export class Creator {
     ];
 
     return outroPrompts;
+  }
+
+  async promptAndResolvePreset() {
+    try {
+      let preset;
+      const { name } = this;
+
+      const answers = await inquirer.prompt(this.resolveFinalPrompts());
+
+      // answers 得到的值为 { preset: 'Default (Vue 2)' }
+
+      if (answers.preset && answers.preset === "Default (Vue 2)") {
+        if (answers.preset in vuePresets) {
+          preset = vuePresets[answers.preset];
+        }
+      } else {
+        // 暂不支持 Vue3、自定义特性配置情况
+        throw new Error("出错了，暂不支持 Vue3、自定义特性配置情况");
+      }
+
+      // 添加 projectName 属性
+      preset.plugins["@vue/cli-service"] = Object.assign(
+        {
+          projectName: name,
+        },
+        preset
+      );
+
+      return preset;
+    } catch (err) {
+      console.log(chalk.red(err));
+      process.exit(1);
+    }
   }
 }
 

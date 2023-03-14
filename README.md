@@ -128,3 +128,11 @@ npm run dev -- create xxx
 ```js
 
 ```
+
+### 处理用户输入
+
+***src/create.js***
+
+```js
+
+```

@@ -21,7 +21,7 @@ program
   .action((name, options) => {
     log(chalk.bold.blue(`Next CLI v0.0.1`));
     const c = new Creator(name);
-    // c.create(name);
+    c.create();
   });
 
 program.on("--help", () => {
