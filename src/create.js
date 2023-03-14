@@ -24,9 +24,12 @@ export class Creator {
 
     const promptAPI = new PromptModuleAPI(this);
     const promptModules = getPromptModules();
-
     promptModules.then(pm => {
       pm.forEach(m => m.default(promptAPI));
+
+      // 保存相关提示选项
+      this.outroPrompts = this.resolveOutroPrompts();
+
       this.test();
     });
   }
@@ -85,7 +88,11 @@ export class Creator {
   }
 
   resolveFinalPrompts() {
-    const prompts = [this.presetPrompt, this.featurePrompt];
+    const prompts = [
+      this.presetPrompt,
+      this.featurePrompt,
+      ...this.outroPrompts,
+    ];
     return prompts;
   }
 
@@ -99,6 +106,46 @@ export class Creator {
       choices: [], // 复选框值，待补充
       pageSize: 10,
     };
+  }
+
+  // 保存相关提示选项
+  resolveOutroPrompts() {
+    const outroPrompts = [
+      // useConfigFiles 是单选框提示选项。
+      {
+        name: "useConfigFiles",
+        when: answers => answers.preset === "__manual__",
+        type: "list",
+        message: "Where do you prefer placing config for Babel, ESLint, etc.?",
+        choices: [
+          {
+            name: "In dedicated config files",
+            value: "files",
+          },
+          {
+            name: "In package.json",
+            value: "pkg",
+          },
+        ],
+      },
+      // 确认提示选项
+      {
+        name: "save",
+        when: answers => answers.preset === "__manual__",
+        type: "confirm",
+        message: "Save this as a preset for future projects?",
+        default: false,
+      },
+      // 输入提示选项
+      {
+        name: "saveName",
+        when: answers => answers.save,
+        type: "input",
+        message: "Save preset as:",
+      },
+    ];
+
+    return outroPrompts;
   }
 }
 
