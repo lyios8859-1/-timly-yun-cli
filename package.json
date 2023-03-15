@@ -24,9 +24,6 @@
   "devDependencies": {
     "prettier": "^2.8.4"
   },
-  "files": [
-    ".prettierrc"
-  ],
   "keywords": [
     "timly",
     "yun-cli",
